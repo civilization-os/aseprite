@@ -58,6 +58,11 @@ jobs:
         mkdir -p dist/Aseprite
         cp build/bin/aseprite.exe dist/Aseprite/
         cp -r build/bin/data dist/Aseprite/ || true
+        shopt -s nullglob
+        dlls=(build/bin/*.dll build/lib/*.dll)
+        if (( ${#dlls[@]} > 0 )); then
+          cp "${dlls[@]}" dist/Aseprite/
+        fi
 
     - name: Create Release Artifact
       shell: pwsh
