@@ -1,0 +1,87 @@
+name: release-windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+
+    - uses: aseprite/get-ninja@main
+    - uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Install Skia
+      shell: bash
+      run: |
+        this_dir="${{ github.workspace }}"
+        skia_url=$(source $this_dir/laf/misc/skia-url.sh | xargs)
+        skia_file=$(basename $skia_url)
+        echo "Downloading Skia from: $skia_url"
+        curl --ssl-revoke-best-effort -L -o "$skia_file" "$skia_url"
+        unzip "$skia_file" -d skia
+
+    - name: Generating Makefiles
+      shell: bash
+      run: |
+        export enable_ccache=off
+        export laf_backend=skia
+        export enable_scripting=on
+        export skia_arch=x64
+
+        cmake -S . -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DENABLE_TESTS=OFF \
+          -DENABLE_SCRIPTING=$enable_scripting \
+          -DENABLE_CCACHE=$enable_ccache \
+          -DLAF_BACKEND=$laf_backend \
+          -DSKIA_DIR=$(realpath skia) \
+          -DSKIA_LIBRARY_DIR=$(realpath skia/out/Release-$skia_arch)
+
+    - name: Compiling
+      shell: bash
+      run: |
+        cd build && ninja aseprite
+
+    - name: Create Distribution Directory
+      shell: bash
+      run: |
+        mkdir -p dist/Aseprite
+        cp build/bin/aseprite.exe dist/Aseprite/
+        cp -r build/bin/data dist/Aseprite/ || true
+
+    - name: Create Release Artifact
+      shell: pwsh
+      run: |
+        # 创建可执行文件的压缩包
+        $version = "${{ github.ref }}".Replace('refs/tags/', '')
+        $filename = "aseprite-$version-windows-x64.zip"
+        Compress-Archive -Path dist/Aseprite -DestinationPath $filename
+        Write-Output "Created: $filename"
+        Write-Output "filename=$filename" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: aseprite-${{ github.ref_name }}-windows-x64.zip
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: aseprite-windows-build
+        path: dist/Aseprite/
+        retention-days: 7
