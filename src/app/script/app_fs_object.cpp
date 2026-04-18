@@ -12,6 +12,7 @@
 #include "app/resource_finder.h"
 #include "app/script/luacpp.h"
 #include "app/script/security.h"
+#include "base/file_content.h"
 #include "base/fs.h"
 
 namespace app { namespace script {
@@ -117,6 +118,34 @@ int AppFS_listFiles(lua_State* L)
   return 1;
 }
 
+int AppFS_readFile(lua_State* L)
+{
+  const char* path = luaL_checkstring(L, 1);
+  std::string absPath = base::get_absolute_path(path);
+
+  if (!ask_access(L, absPath.c_str(), FileAccessMode::Read, ResourceType::File))
+    return luaL_error(L, "the script doesn't have access to read the file '%s'", absPath.c_str());
+
+  const auto content = base::read_file_content(absPath);
+  lua_pushlstring(L, content.data(), content.size());
+  return 1;
+}
+
+int AppFS_writeFile(lua_State* L)
+{
+  const char* path = luaL_checkstring(L, 1);
+  std::string absPath = base::get_absolute_path(path);
+  size_t contentLen = 0;
+  const char* content = luaL_checklstring(L, 2, &contentLen);
+
+  if (!ask_access(L, absPath.c_str(), FileAccessMode::Write, ResourceType::File))
+    return luaL_error(L, "the script doesn't have access to write the file '%s'", absPath.c_str());
+
+  base::write_file_content(absPath, std::string(content, contentLen));
+  lua_pushboolean(L, true);
+  return 1;
+}
+
 int AppFS_makeDirectory(lua_State* L)
 {
   const char* path = luaL_checkstring(L, 1);
@@ -208,6 +237,8 @@ const luaL_Reg AppFS_methods[] = {
   { "isDirectory",        AppFS_isDirectory                                 },
   { "fileSize",           AppFS_fileSize                                    },
   { "listFiles",          AppFS_listFiles                                   },
+  { "readFile",           AppFS_readFile                                    },
+  { "writeFile",          AppFS_writeFile                                   },
   // Manipulate directories
   { "makeDirectory",      AppFS_makeDirectory                               },
   { "makeAllDirectories", AppFS_makeAllDirectories                          },

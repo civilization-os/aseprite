@@ -61,6 +61,18 @@ do
   assert(readmeFound)
 end
 
+do
+  local path = "_tmp_binary.dat"
+  assert(fs.writeFile(path, string.char(0, 1, 2, 255) .. "aseprite"))
+  assert(fs.isFile(path))
+  local content = fs.readFile(path)
+  assert(#content == 12)
+  assert(string.byte(content, 1) == 0)
+  assert(string.byte(content, 4) == 255)
+  assert(string.sub(content, 5) == "aseprite")
+  assert(os.remove(path))
+end
+
 -- Create directories
 do
   assert(fs.makeDirectory("_tmp"))

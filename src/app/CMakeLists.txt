@@ -195,6 +195,7 @@ if(ENABLE_SCRIPTING)
     script/app_object.cpp
     script/app_os_object.cpp
     script/app_theme_object.cpp
+    script/base64_class.cpp
     script/brush_class.cpp
     script/canvas_widget.cpp
     script/cel_class.cpp

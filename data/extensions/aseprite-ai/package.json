@@ -1,0 +1,15 @@
+{
+  "name": "aseprite-ai",
+  "displayName": "Aseprite AI Bridge",
+  "description": "Built-in AI bridge plugin for MCP over WebSocket",
+  "version": "1.0",
+  "publisher": "aseprite",
+  "categories": [
+    "Scripts"
+  ],
+  "contributes": {
+    "scripts": [
+      { "path": "./main.lua" }
+    ]
+  }
+}

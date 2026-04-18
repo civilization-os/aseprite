@@ -1073,6 +1073,15 @@
         <separator />
         <item command="Refresh" text="@.view_refresh" group="view_screen" />
       </menu>
+      <menu text="AI" id="ai_menu">
+        <separator group="ai_connection" />
+        <separator />
+        <separator group="ai_generation" />
+        <separator />
+        <separator group="ai_preview" />
+        <separator />
+        <separator group="ai_settings" />
+      </menu>
       <menu text="@.help" id="help_menu">
         <item command="OpenBrowser" text="@.help_readme" group="help_readme">
           <param name="filename" value="README.md" />

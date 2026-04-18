@@ -164,6 +164,7 @@ void register_app_os_object(lua_State* L);
 void register_app_command_object(lua_State* L);
 void register_app_preferences_object(lua_State* L);
 void register_json_object(lua_State* L);
+void register_base64_class(lua_State* L);
 
 void register_brush_class(lua_State* L);
 void register_cel_class(lua_State* L);
@@ -255,6 +256,7 @@ Engine::Engine() : L(luaL_newstate()), m_delegate(nullptr), m_printLastResult(fa
   register_app_command_object(L);
   register_app_preferences_object(L);
   register_json_object(L);
+  register_base64_class(L);
 
   // Register constants
   lua_newtable(L);
