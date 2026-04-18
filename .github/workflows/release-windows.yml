@@ -53,16 +53,83 @@ jobs:
         cd build && ninja aseprite
 
     - name: Create Distribution Directory
-      shell: bash
+      shell: pwsh
       run: |
-        mkdir -p dist/Aseprite
-        cp build/bin/aseprite.exe dist/Aseprite/
-        cp -r build/bin/data dist/Aseprite/ || true
-        shopt -s nullglob
-        dlls=(build/bin/*.dll build/lib/*.dll)
-        if (( ${#dlls[@]} > 0 )); then
-          cp "${dlls[@]}" dist/Aseprite/
-        fi
+        $distDir = Join-Path $PWD 'dist/Aseprite'
+        $binDir = Join-Path $PWD 'build/bin'
+        $libDir = Join-Path $PWD 'build/lib'
+        $exePath = Join-Path $binDir 'aseprite.exe'
+
+        New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+        Copy-Item $exePath $distDir -Force
+        if (Test-Path (Join-Path $binDir 'data')) {
+          Copy-Item (Join-Path $binDir 'data') $distDir -Recurse -Force
+        }
+
+        $searchDirs = @($binDir, $libDir)
+        $searchDirs += ($env:PATH -split ';' | Where-Object { $_ -and (Test-Path $_) })
+        $searchDirs = $searchDirs | Select-Object -Unique
+
+        $windowsDirs = @(
+          $env:windir,
+          (Join-Path $env:windir 'System32'),
+          (Join-Path $env:windir 'SysWOW64')
+        ) | ForEach-Object { $_.ToLowerInvariant() }
+
+        function Get-DllDependencies([string]$binaryPath) {
+          $lines = & dumpbin /nologo /dependents $binaryPath
+          foreach ($line in $lines) {
+            $name = $line.Trim()
+            if ($name -match '\.dll$' -and
+                $name -notlike 'api-ms-win-*' -and
+                $name -notlike 'ext-ms-*') {
+              $name
+            }
+          }
+        }
+
+        function Resolve-DllPath([string]$dllName) {
+          foreach ($dir in $searchDirs) {
+            $candidate = Join-Path $dir $dllName
+            if (Test-Path $candidate) {
+              $fullPath = (Resolve-Path $candidate).Path
+              $lowerPath = $fullPath.ToLowerInvariant()
+              if (-not ($windowsDirs | Where-Object { $lowerPath.StartsWith($_) })) {
+                return $fullPath
+              }
+            }
+          }
+          return $null
+        }
+
+        $queued = [System.Collections.Generic.Queue[string]]::new()
+        $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $copied = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $queued.Enqueue($exePath)
+
+        while ($queued.Count -gt 0) {
+          $current = $queued.Dequeue()
+          if (-not $seen.Add($current)) {
+            continue
+          }
+
+          foreach ($dllName in Get-DllDependencies $current) {
+            $resolved = Resolve-DllPath $dllName
+            if (-not $resolved) {
+              Write-Warning "Unresolved runtime dependency: $dllName"
+              continue
+            }
+
+            $targetPath = Join-Path $distDir ([System.IO.Path]::GetFileName($resolved))
+            if ($copied.Add($resolved)) {
+              Copy-Item $resolved $targetPath -Force
+            }
+            $queued.Enqueue($resolved)
+          }
+        }
+
+        Write-Output 'Packaged files:'
+        Get-ChildItem $distDir | Select-Object Name, Length | Format-Table -AutoSize
 
     - name: Create Release Artifact
       shell: pwsh
