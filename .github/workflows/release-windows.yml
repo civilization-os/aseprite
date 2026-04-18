@@ -60,8 +60,12 @@ jobs:
     - name: Create Release Artifact
       shell: pwsh
       run: |
-        # 创建可执行文件的压缩包
-        $version = "${{ github.ref }}".Replace('refs/tags/', '')
+        # Build a filesystem-safe artifact name for both tag and manual branch runs.
+        $version = "${{ github.ref_name }}"
+        if (-not $version) {
+          $version = "${{ github.sha }}".Substring(0, 7)
+        }
+        $version = $version -replace '[\\/:*?"<>|]', '-'
         $filename = "aseprite-$version-windows-x64.zip"
         Compress-Archive -Path dist/Aseprite -DestinationPath $filename
         Write-Output "Created: $filename"
