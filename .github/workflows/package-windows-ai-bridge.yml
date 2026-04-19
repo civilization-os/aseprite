@@ -1,0 +1,157 @@
+name: package-windows-ai-bridge
+
+on:
+  push:
+    branches:
+      - codex/aseprite-ai-bridge-v1
+    paths:
+      - '.github/workflows/package-windows-ai-bridge.yml'
+      - 'build.ps1'
+      - 'build.sh'
+      - 'CMakeLists.txt'
+      - 'laf/**'
+      - 'src/**'
+      - 'data/**'
+      - 'tests/**'
+  workflow_dispatch:
+
+jobs:
+  package-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - uses: aseprite/get-ninja@main
+    - uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Install Skia
+      shell: bash
+      run: |
+        this_dir="${{ github.workspace }}"
+        skia_url=$(source "$this_dir/laf/misc/skia-url.sh" | xargs)
+        skia_file=$(basename "$skia_url")
+        curl --ssl-revoke-best-effort -L -o "$skia_file" "$skia_url"
+        unzip "$skia_file" -d skia
+
+    - name: Configure
+      shell: bash
+      run: |
+        cmake -S . -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DENABLE_TESTS=OFF \
+          -DENABLE_SCRIPTING=ON \
+          -DENABLE_WEBSOCKET=ON \
+          -DENABLE_CCACHE=OFF \
+          -DLAF_BACKEND=skia \
+          -DSKIA_DIR=$(realpath skia) \
+          -DSKIA_LIBRARY_DIR=$(realpath skia/out/Release-x64)
+
+    - name: Build Aseprite
+      shell: bash
+      run: |
+        cmake --build build --target aseprite --parallel
+
+    - name: Package Distribution
+      shell: pwsh
+      run: |
+        $distDir = Join-Path $PWD 'dist/aseprite-ai-bridge-win64'
+        $zipPath = Join-Path $PWD 'dist/aseprite-ai-bridge-win64.zip'
+        $binDir = Join-Path $PWD 'build/bin'
+        $libDir = Join-Path $PWD 'build/lib'
+        $exePath = Join-Path $binDir 'aseprite.exe'
+
+        if (Test-Path $distDir) {
+          Remove-Item -LiteralPath $distDir -Recurse -Force
+        }
+        if (Test-Path $zipPath) {
+          Remove-Item -LiteralPath $zipPath -Force
+        }
+
+        New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+        Copy-Item -LiteralPath $exePath -Destination $distDir
+
+        foreach ($name in @('zlib.dll', 'icudtl.dat')) {
+          $path = Join-Path $binDir $name
+          if (Test-Path $path) {
+            Copy-Item -LiteralPath $path -Destination $distDir
+          }
+        }
+
+        if (Test-Path (Join-Path $binDir 'data')) {
+          Copy-Item -LiteralPath (Join-Path $binDir 'data') -Destination $distDir -Recurse -Force
+        }
+
+        $searchDirs = @($binDir, $libDir)
+        $searchDirs += ($env:PATH -split ';' | Where-Object { $_ -and (Test-Path $_) })
+        $searchDirs = $searchDirs | Select-Object -Unique
+
+        $windowsDirs = @(
+          $env:windir,
+          (Join-Path $env:windir 'System32'),
+          (Join-Path $env:windir 'SysWOW64')
+        ) | ForEach-Object { $_.ToLowerInvariant() }
+
+        function Get-DllDependencies([string]$binaryPath) {
+          $lines = & dumpbin /nologo /dependents $binaryPath
+          foreach ($line in $lines) {
+            $name = $line.Trim()
+            if ($name -match '\.dll$' -and
+                $name -notlike 'api-ms-win-*' -and
+                $name -notlike 'ext-ms-*') {
+              $name
+            }
+          }
+        }
+
+        function Resolve-DllPath([string]$dllName) {
+          foreach ($dir in $searchDirs) {
+            $candidate = Join-Path $dir $dllName
+            if (Test-Path $candidate) {
+              $fullPath = (Resolve-Path $candidate).Path
+              $lowerPath = $fullPath.ToLowerInvariant()
+              if (-not ($windowsDirs | Where-Object { $lowerPath.StartsWith($_) })) {
+                return $fullPath
+              }
+            }
+          }
+          return $null
+        }
+
+        $queued = [System.Collections.Generic.Queue[string]]::new()
+        $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $copied = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $queued.Enqueue($exePath)
+
+        while ($queued.Count -gt 0) {
+          $current = $queued.Dequeue()
+          if (-not $seen.Add($current)) {
+            continue
+          }
+
+          foreach ($dllName in Get-DllDependencies $current) {
+            $resolved = Resolve-DllPath $dllName
+            if (-not $resolved) {
+              Write-Warning "Unresolved runtime dependency: $dllName"
+              continue
+            }
+
+            $targetPath = Join-Path $distDir ([System.IO.Path]::GetFileName($resolved))
+            if ($copied.Add($resolved)) {
+              Copy-Item -LiteralPath $resolved -Destination $targetPath -Force
+            }
+            $queued.Enqueue($resolved)
+          }
+        }
+
+        Compress-Archive -Path "$distDir/*" -DestinationPath $zipPath
+
+    - name: Upload Zip Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: aseprite-ai-bridge-win64
+        path: dist/aseprite-ai-bridge-win64.zip
+        retention-days: 7
