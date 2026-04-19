@@ -127,7 +127,9 @@ int AppFS_readFile(lua_State* L)
     return luaL_error(L, "the script doesn't have access to read the file '%s'", absPath.c_str());
 
   const auto content = base::read_file_content(absPath);
-  lua_pushlstring(L, content.data(), content.size());
+  lua_pushlstring(L,
+                  reinterpret_cast<const char*>(content.data()),
+                  content.size());
   return 1;
 }
 
@@ -141,7 +143,9 @@ int AppFS_writeFile(lua_State* L)
   if (!ask_access(L, absPath.c_str(), FileAccessMode::Write, ResourceType::File))
     return luaL_error(L, "the script doesn't have access to write the file '%s'", absPath.c_str());
 
-  base::write_file_content(absPath, std::string(content, contentLen));
+  const auto* bytes = reinterpret_cast<const uint8_t*>(content);
+  base::buffer data(bytes, bytes + contentLen);
+  base::write_file_content(absPath, data);
   lua_pushboolean(L, true);
   return 1;
 }

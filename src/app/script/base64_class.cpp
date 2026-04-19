@@ -22,7 +22,9 @@ int Base64_encode(lua_State* L)
   size_t len = 0;
   const char* data = luaL_checklstring(L, 1, &len);
   std::string encoded;
-  base::encode_base64(std::string(data, len), encoded);
+  base::buffer input(reinterpret_cast<const uint8_t*>(data),
+                     reinterpret_cast<const uint8_t*>(data) + len);
+  base::encode_base64(input, encoded);
   lua_pushlstring(L, encoded.data(), encoded.size());
   return 1;
 }
@@ -31,9 +33,11 @@ int Base64_decode(lua_State* L)
 {
   size_t len = 0;
   const char* data = luaL_checklstring(L, 1, &len);
-  std::string decoded;
+  base::buffer decoded;
   base::decode_base64(std::string(data, len), decoded);
-  lua_pushlstring(L, decoded.data(), decoded.size());
+  lua_pushlstring(L,
+                  reinterpret_cast<const char*>(decoded.data()),
+                  decoded.size());
   return 1;
 }
 
