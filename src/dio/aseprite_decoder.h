@@ -1,5 +1,5 @@
 // Aseprite Document IO Library
-// Copyright (c) 2018-2025 Igara Studio S.A.
+// Copyright (c) 2018-present Igara Studio S.A.
 // Copyright (c) 2017 David Capello
 //
 // This file is released under the terms of the MIT license.
@@ -35,10 +35,6 @@ class UserData;
 
 namespace dio {
 
-struct AsepriteHeader;
-struct AsepriteFrameHeader;
-class AsepriteExternalFiles;
-
 class AsepriteDecoder : public Decoder {
 public:
   bool decode() override;
@@ -58,8 +54,7 @@ private:
                              doc::Sprite* sprite,
                              doc::Layer** previous_layer,
                              int* current_level);
-  doc::Cel* readCelChunk(doc::Sprite* sprite,
-                         doc::frame_t frame,
+  doc::Cel* readCelChunk(doc::frame_t frame,
                          doc::PixelFormat pixelFormat,
                          const AsepriteHeader* header,
                          const size_t chunk_end);
@@ -76,7 +71,7 @@ private:
                                  const AsepriteExternalFiles& extFiles);
   void readPropertiesMaps(doc::UserData::PropertiesMaps& propertiesMaps,
                           const AsepriteExternalFiles& extFiles);
-  const doc::UserData::Variant readPropertyValue(uint16_t type);
+  const doc::UserData::Variant readPropertyValue(uint16_t type, int& depth);
   void readTilesData(doc::Tileset* tileset, const AsepriteExternalFiles& extFiles);
   base::Uuid readUuid();
 
